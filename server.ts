@@ -167,6 +167,21 @@ async function startServer() {
     }
   });
 
+  app.get("/api/users/:id", async (req, res) => {
+    try {
+      const result = await pool.query(
+        "SELECT id, username, role, name, phone, profile_picture FROM users WHERE id = $1",
+        [req.params.id]
+      );
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json(result.rows[0]);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch user" });
+    }
+  });
+
   app.post("/api/users", async (req, res) => {
     const { username, password, role, name, phone, profile_picture } = req.body;
     try {
@@ -182,20 +197,47 @@ async function startServer() {
 
   app.put("/api/users/:id", async (req, res) => {
     const { id } = req.params;
-    const { name, password, phone, profile_picture } = req.body;
+    const { username, name, password, phone, profile_picture } = req.body;
+
     try {
-      if (password) {
-        await pool.query(
-          "UPDATE users SET name = $1, password = $2, phone = $3, profile_picture = $4 WHERE id = $5",
-          [name, password, phone || null, profile_picture || null, id]
-        );
-      } else {
-        await pool.query(
-          "UPDATE users SET name = $1, phone = $2, profile_picture = $3 WHERE id = $4",
-          [name, phone || null, profile_picture || null, id]
-        );
+      const updates = [];
+      const values = [];
+
+      if (username !== undefined) {
+        updates.push(`username = $${updates.length + 1}`);
+        values.push(username);
       }
-      const updated = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
+      if (name !== undefined) {
+        updates.push(`name = $${updates.length + 1}`);
+        values.push(name);
+      }
+      if (password !== undefined && password !== "") {
+        updates.push(`password = $${updates.length + 1}`);
+        values.push(password);
+      }
+      if (phone !== undefined) {
+        updates.push(`phone = $${updates.length + 1}`);
+        values.push(phone || null);
+      }
+      if (profile_picture !== undefined) {
+        updates.push(`profile_picture = $${updates.length + 1}`);
+        values.push(profile_picture || null);
+      }
+
+      if (updates.length === 0) {
+        return res.status(400).json({ error: "No fields to update" });
+      }
+
+      values.push(id);
+      await pool.query(
+        `UPDATE users SET ${updates.join(", ")} WHERE id = $${values.length}`,
+        values
+      );
+
+      const updated = await pool.query(
+        "SELECT id, username, role, name, phone, profile_picture FROM users WHERE id = $1",
+        [id]
+      );
       res.json({ success: true, user: updated.rows[0] });
     } catch (err) {
       res.status(500).json({ error: "Failed to update user" });
