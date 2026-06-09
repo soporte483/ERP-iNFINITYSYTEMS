@@ -1,8 +1,0 @@
-{
-  "name": "Infinity Systems ERP",
-  "description": "Sistema de gestión integral para instalaciones de seguridad, redes y videovigilancia. Incluye gestión de tareas, reportes técnicos y soporte de ingeniería.",
-  "requestFramePermissions": [
-    "camera",
-    "geolocation"
-  ]
-}
