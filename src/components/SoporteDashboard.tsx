@@ -112,6 +112,17 @@ export default function SoporteDashboard({ user, socket }: { user: User, socket:
     }
   };
 
+  const handleDocumentFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewDocument(prev => ({ ...prev, file_url: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSubmitReport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmittingReport) return;
@@ -572,14 +583,22 @@ export default function SoporteDashboard({ user, socket }: { user: User, socket:
                 </div>
               )}
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">URL del Archivo</label>
-                <input 
-                  type="url" 
-                  className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-orange-500"
-                  value={newDocument.file_url}
-                  onChange={e => setNewDocument({ ...newDocument, file_url: e.target.value })}
-                  placeholder="https://..."
-                />
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Archivo de la computadora o celular</label>
+                <div className="flex flex-col gap-2">
+                  <input 
+                    type="file" 
+                    onChange={handleDocumentFileChange}
+                    className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-orange-500 text-sm"
+                  />
+                  {newDocument.file_url && newDocument.file_url.startsWith('data:image/') && (
+                    <div className="relative w-32 h-32 mt-2 rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
+                      <img src={newDocument.file_url} alt="Vista previa" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  {newDocument.file_url && !newDocument.file_url.startsWith('data:image/') && (
+                    <div className="text-xs text-green-600 font-medium">Archivo seleccionado correctamente</div>
+                  )}
+                </div>
               </div>
               <div className="flex gap-3 mt-8">
                 <button 
