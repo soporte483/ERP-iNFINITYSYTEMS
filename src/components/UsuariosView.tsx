@@ -36,6 +36,7 @@ export default function UsuariosView() {
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -106,6 +107,36 @@ export default function UsuariosView() {
     }
   };
 
+  const handleDelete = async (user: User) => {
+    if (!window.confirm(`¿Eliminar al usuario "${user.username}"? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    setDeletingId(user.id);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/users/${user.id}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error || "Error al eliminar usuario");
+      }
+
+      await fetchUsers();
+      if (selectedUser?.id === user.id) {
+        closeModal();
+      }
+    } catch (err) {
+      console.error(err);
+      setError((err as Error).message || "No se pudo eliminar el usuario");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -158,14 +189,24 @@ export default function UsuariosView() {
                     </span>
                   </td>
                   <td className="px-4 py-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(user)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                    >
-                      <Settings size={16} />
-                      Ajustes
-                    </button>
+                    <div className="inline-flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(user)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                      >
+                        <Settings size={16} />
+                        Ajustes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(user)}
+                        disabled={deletingId === user.id}
+                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

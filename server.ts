@@ -244,6 +244,17 @@ async function startServer() {
     }
   });
 
+  app.delete("/api/users/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      await pool.query("DELETE FROM users WHERE id = $1", [id]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Failed to delete user" });
+    }
+  });
+
   // Reports API - All reports
   app.get("/api/reports", async (req, res) => {
     try {
