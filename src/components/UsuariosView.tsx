@@ -5,6 +5,8 @@ import React, { useState, useEffect } from "react";
 import { Shield, ShieldAlert, Settings, Wrench } from "lucide-react";
 import { User, Role } from "../types";
 
+const roleOrder: Role[] = ["admin", "gestion", "soporte", "tecnico"];
+
 const roleLabels: Record<Role, string> = {
   admin: "Administrador",
   gestion: "Gestión",
@@ -137,141 +139,65 @@ export default function UsuariosView() {
     }
   };
 
+  const usersByRole = roleOrder.reduce((acc, role) => {
+    acc[role] = users.filter((user) => user.role === role);
+    return acc;
+  }, {} as Record<Role, User[]>);
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Usuarios</h1>
-          <p className="text-sm text-gray-500">Administra los usuarios y sus datos.</p>
-        </div>
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold">Usuarios</h1>
+        <p className="text-sm text-gray-500">Administración por rol.</p>
       </div>
 
-      {error && (
-        <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">ID</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Usuario</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Nombre</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Rol</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {loading ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">
-                  Cargando usuarios...
-                </td>
-              </tr>
-            ) : users.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">
-                  No hay usuarios registrados.
-                </td>
-              </tr>
-            ) : (
-              users.map((user) => (
-                <tr key={user.id}>
-                  <td className="px-4 py-4 text-sm text-gray-600">{user.id}</td>
-                  <td className="px-4 py-4 text-sm text-gray-600">{user.username}</td>
-                  <td className="px-4 py-4 text-sm text-gray-600">{user.name}</td>
-                  <td className="px-4 py-4">
-                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${roleStyles[user.role]}`}>
-                      {roleIcons[user.role]}
-                      <span className="ml-1">{roleLabels[user.role]}</span>
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 text-right">
-                    <div className="inline-flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openEditModal(user)}
-                        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                      >
-                        <Settings size={16} />
-                        Ajustes
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(user)}
-                        disabled={deletingId === user.id}
-                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Eliminar
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {isModalOpen && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-bold">Editar usuario</h2>
-                <p className="text-sm text-gray-500">Actualiza el nombre y la contraseña del usuario.</p>
-              </div>
-              <button type="button" onClick={closeModal} className="text-gray-400 hover:text-gray-700">
-                ✕
-              </button>
+      {roleOrder.map((role) => (
+        <section key={role} className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">{roleLabels[role]}</h2>
+              <p className="text-sm text-gray-500">
+                {usersByRole[role].length} usuario{usersByRole[role].length !== 1 ? "s" : ""}
+              </p>
             </div>
-
-            <form onSubmit={handleSave} className="mt-6 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700">Nombre</label>
-                <input
-                  type="text"
-                  value={editData.name}
-                  onChange={(e) => setEditData((prev) => ({ ...prev, name: e.target.value }))}
-                  className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700">Contraseña</label>
-                <input
-                  type="password"
-                  value={editData.password}
-                  onChange={(e) => setEditData((prev) => ({ ...prev, password: e.target.value }))}
-                  className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
-                  placeholder="Dejar vacío para mantener la contraseña actual"
-                />
-                <p className="mt-2 text-xs text-gray-500">Si no deseas cambiar la contraseña, deja el campo vacío.</p>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="rounded-2xl border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded-2xl bg-gradient-to-r from-orange-500 to-yellow-500 px-5 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-                >
-                  {saving ? "Guardando..." : "Guardar cambios"}
-                </button>
-              </div>
-            </form>
           </div>
-        </div>
-      )}
+
+          {usersByRole[role].length === 0 ? (
+            <p className="text-sm text-gray-500">No hay usuarios en esta categoría.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="border-b border-gray-200 bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3">ID</th>
+                    <th className="px-4 py-3">Usuario</th>
+                    <th className="px-4 py-3">Nombre</th>
+                    <th className="px-4 py-3">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {usersByRole[role].map((user) => (
+                    <tr key={user.id}>
+                      <td className="px-4 py-4">{user.id}</td>
+                      <td className="px-4 py-4">{user.username}</td>
+                      <td className="px-4 py-4">{user.name}</td>
+                      <td className="px-4 py-4">
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(user)}
+                          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                        >
+                          Ajustes
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      ))}
     </div>
   );
 }
