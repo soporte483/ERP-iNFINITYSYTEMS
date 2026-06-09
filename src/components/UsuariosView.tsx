@@ -1,190 +1,230 @@
 /**
  * CHECKPOINT: Infinity Systems ERP - Version 1.5 (Responsive & Task Optimization)
  */
-import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, Shield, ShieldAlert, Wrench, Settings, Trash2 } from 'lucide-react';
-import { User, Role } from '../types';
+import React, { useState, useEffect } from "react";
+import { Shield, ShieldAlert, Settings, Wrench } from "lucide-react";
+import { User, Role } from "../types";
+
+const roleLabels: Record<Role, string> = {
+  admin: "Administrador",
+  gestion: "Gestión",
+  soporte: "Soporte",
+  tecnico: "Técnico",
+};
+
+const roleStyles: Record<Role, string> = {
+  admin: "bg-red-100 text-red-700",
+  gestion: "bg-purple-100 text-purple-700",
+  soporte: "bg-blue-100 text-blue-700",
+  tecnico: "bg-green-100 text-green-700",
+};
+
+const roleIcons: Record<Role, JSX.Element> = {
+  admin: <ShieldAlert size={12} />,
+  gestion: <Shield size={12} />,
+  soporte: <Settings size={12} />,
+  tecnico: <Wrench size={12} />,
+};
 
 export default function UsuariosView() {
   const [users, setUsers] = useState<User[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newUser, setNewUser] = useState({
-    username: '',
-    password: '',
-    name: '',
-    role: 'tecnico' as Role
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [editData, setEditData] = useState({
+    name: "",
+    password: "",
   });
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUsers();
   }, []);
 
   const fetchUsers = async () => {
-    const res = await fetch('/api/users');
-    const data = await res.json();
-    setUsers(data);
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/users");
+      if (!res.ok) throw new Error("Error al cargar usuarios");
+      const data = await res.json();
+      setUsers(data);
+    } catch (err) {
+      console.error(err);
+      setError("No se pudo cargar la lista de usuarios");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
+  const openEditModal = (user: User) => {
+    setSelectedUser(user);
+    setEditData({ name: user.name || "", password: "" });
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setSelectedUser(null);
+    setEditData({ name: "", password: "" });
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch('/api/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newUser),
-    });
-    if (res.ok) {
-      setIsModalOpen(false);
-      setNewUser({ username: '', password: '', name: '', role: 'tecnico' });
-      fetchUsers();
-    } else {
-      const err = await res.json();
-      alert(err.error || 'Error al crear usuario');
+    if (!selectedUser) return;
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const payload: { name: string; password?: string } = {
+        name: editData.name.trim(),
+      };
+      if (editData.password.trim().length > 0) {
+        payload.password = editData.password.trim();
+      }
+
+      const res = await fetch(`/api/users/${selectedUser.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error || "Error al actualizar usuario");
+      }
+
+      await fetchUsers();
+      closeModal();
+    } catch (err) {
+      console.error(err);
+      setError((err as Error).message || "No se pudo guardar el usuario");
+    } finally {
+      setSaving(false);
     }
   };
-
-  const getDepartment = (role: Role) => {
-    switch(role) {
-      case 'admin':
-      case 'gestion':
-        return 'Administración';
-      case 'tecnico':
-        return 'Área Técnica';
-      case 'soporte':
-        return 'Ingeniería';
-      default:
-        return 'Otros';
-    }
-  };
-
-  const departments = ['Administración', 'Ingeniería', 'Área Técnica'];
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h3 className="text-2xl font-bold text-black tracking-tight">Gestión de Personal</h3>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="bg-black text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-black/80 transition-all"
-        >
-          <UserPlus size={20} />
-          Registrar Nuevo Usuario
-        </button>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Usuarios</h1>
+          <p className="text-sm text-gray-500">Administra los usuarios y sus datos.</p>
+        </div>
       </div>
 
-      <div className="space-y-12">
-        {departments.map(dept => {
-          const deptUsers = users.filter(u => getDepartment(u.role) === dept);
-          if (deptUsers.length === 0) return null;
-          return (
-            <div key={dept} className="space-y-4">
-              <h4 className="text-xl font-bold text-gray-800 border-b pb-2">{dept}</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {deptUsers.map(u => (
-                  <div key={u.id} className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm flex flex-col justify-between">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-xl bg-black/[0.03] flex items-center justify-center font-bold text-lg">
-                          {u.name.charAt(0)}
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-black">{u.name}</h4>
-                          <p className="text-xs text-black/40">@{u.username}</p>
-                        </div>
-                      </div>
-                      <RoleBadge role={u.role} />
-                    </div>
-                    
-                    <div className="pt-4 border-t border-black/5 flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-black/30">ID: #{u.id.toString().padStart(3, '0')}</span>
-                      <div className="flex gap-2">
-                        <button className="p-2 hover:bg-black/5 rounded-lg transition-colors text-black/40 hover:text-black">
-                          <Settings size={16} />
-                        </button>
-                        <button className="p-2 hover:bg-red-50 rounded-lg transition-colors text-red-400 hover:text-red-600">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+      {error && (
+        <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">ID</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Usuario</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Nombre</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Rol</th>
+              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {loading ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">
+                  Cargando usuarios...
+                </td>
+              </tr>
+            ) : users.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">
+                  No hay usuarios registrados.
+                </td>
+              </tr>
+            ) : (
+              users.map((user) => (
+                <tr key={user.id}>
+                  <td className="px-4 py-4 text-sm text-gray-600">{user.id}</td>
+                  <td className="px-4 py-4 text-sm text-gray-600">{user.username}</td>
+                  <td className="px-4 py-4 text-sm text-gray-600">{user.name}</td>
+                  <td className="px-4 py-4">
+                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${roleStyles[user.role]}`}>
+                      {roleIcons[user.role]}
+                      <span className="ml-1">{roleLabels[user.role]}</span>
+                    </span>
+                  </td>
+                  <td className="px-4 py-4 text-right">
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(user)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                    >
+                      <Settings size={16} />
+                      Ajustes
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {isModalOpen && selectedUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold">Editar usuario</h2>
+                <p className="text-sm text-gray-500">Actualiza el nombre y la contraseña del usuario.</p>
               </div>
+              <button type="button" onClick={closeModal} className="text-gray-400 hover:text-gray-700">
+                ✕
+              </button>
             </div>
-          );
-        })}
-      </div>
 
-      {/* Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl border border-black/10">
-            <h3 className="text-xl font-bold mb-6">Nuevo Usuario</h3>
-            <form onSubmit={handleCreateUser} className="space-y-4">
+            <form onSubmit={handleSave} className="mt-6 space-y-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-black/40 mb-1">Nombre Completo</label>
-                <input 
-                  type="text" 
-                  className="w-full px-4 py-3 rounded-xl bg-[#f5f5f5] border-none focus:ring-2 focus:ring-black"
-                  value={newUser.name}
-                  onChange={e => setNewUser({ ...newUser, name: e.target.value })}
-                  placeholder="Ej. Juan Pérez"
+                <label className="block text-sm font-semibold text-gray-700">Nombre</label>
+                <input
+                  type="text"
+                  value={editData.name}
+                  onChange={(e) => setEditData((prev) => ({ ...prev, name: e.target.value }))}
+                  className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
                   required
                 />
               </div>
+
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-black/40 mb-1">Nombre de Usuario</label>
-                <input 
-                  type="text" 
-                  className="w-full px-4 py-3 rounded-xl bg-[#f5f5f5] border-none focus:ring-2 focus:ring-black"
-                  value={newUser.username}
-                  onChange={e => setNewUser({ ...newUser, username: e.target.value })}
-                  placeholder="jperez"
-                  required
+                <label className="block text-sm font-semibold text-gray-700">Contraseña</label>
+                <input
+                  type="password"
+                  value={editData.password}
+                  onChange={(e) => setEditData((prev) => ({ ...prev, password: e.target.value }))}
+                  className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
+                  placeholder="Dejar vacío para mantener la contraseña actual"
                 />
+                <p className="mt-2 text-xs text-gray-500">Si no deseas cambiar la contraseña, deja el campo vacío.</p>
               </div>
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-black/40 mb-1">Contraseña</label>
-                <input 
-                  type="password" 
-                  className="w-full px-4 py-3 rounded-xl bg-[#f5f5f5] border-none focus:ring-2 focus:ring-black"
-                  value={newUser.password}
-                  onChange={e => setNewUser({ ...newUser, password: e.target.value })}
-                  placeholder="••••••••"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-black/40 mb-1">Rol en la Empresa</label>
-                <select 
-                  className="w-full px-4 py-3 rounded-xl bg-[#f5f5f5] border-none focus:ring-2 focus:ring-black"
-                  value={newUser.role}
-                  onChange={e => setNewUser({ ...newUser, role: e.target.value as Role })}
-                  required
-                >
-                  <optgroup label="Área Técnica">
-                    <option value="tecnico">Técnico</option>
-                  </optgroup>
-                  <optgroup label="Ingeniería">
-                    <option value="soporte">Ingeniero / Soporte</option>
-                  </optgroup>
-                  <optgroup label="Administración">
-                    <option value="gestion">Gestión</option>
-                    <option value="admin">Administrador</option>
-                  </optgroup>
-                </select>
-              </div>
-              <div className="flex gap-3 mt-8">
-                <button 
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 px-6 py-3 rounded-xl font-bold text-black/60 hover:bg-black/5 transition-all"
+                  onClick={closeModal}
+                  className="rounded-2xl border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                 >
                   Cancelar
                 </button>
-                <button 
+                <button
                   type="submit"
-                  className="flex-1 bg-black text-white px-6 py-3 rounded-xl font-bold hover:bg-black/80 transition-all"
+                  disabled={saving}
+                  className="rounded-2xl bg-gradient-to-r from-orange-500 to-yellow-500 px-5 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
                 >
-                  Crear Usuario
+                  {saving ? "Guardando..." : "Guardar cambios"}
                 </button>
               </div>
             </form>
@@ -192,26 +232,5 @@ export default function UsuariosView() {
         </div>
       )}
     </div>
-  );
-}
-
-function RoleBadge({ role }: { role: Role }) {
-  const icons = {
-    admin: <ShieldAlert size={12} />,
-    gestion: <Shield size={12} />,
-    soporte: <Settings size={12} />,
-    tecnico: <Wrench size={12} />
-  };
-  const styles = {
-    admin: 'bg-red-100 text-red-700',
-    gestion: 'bg-purple-100 text-purple-700',
-    soporte: 'bg-blue-100 text-blue-700',
-    tecnico: 'bg-green-100 text-green-700'
-  };
-  return (
-    <span className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${styles[role]}`}>
-      {icons[role]}
-      {role}
-    </span>
   );
 }

@@ -1,18 +1,35 @@
 /**
  * CHECKPOINT: Infinity Systems ERP - Version 1.5 (Responsive & Task Optimization)
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Socket } from 'socket.io-client';
 import { Plus, Users, Clock, AlertCircle, CheckCircle2, MessageSquare, Phone, BarChart2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { User, Task, Client, Role } from '../types';
 
-export default function AdminDashboard({ user, socket }: { user: User, socket: Socket }) {
+function safeJsonParse<T>(value: unknown, fallback: T): T {
+  if (Array.isArray(value)) return value as unknown as T;
+  if (typeof value !== 'string') return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function formatScheduledTime(value?: string) {
+  if (!value) return '-';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
+}
+
+export default function AdminDashboard({ user, socket }: { user: User; socket: Socket }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingError, setLoadingError] = useState<string | null>(null);
   const [newTask, setNewTask] = useState({
     client_id: '',
     problem: '',
@@ -27,16 +44,28 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
   });
 
   useEffect(() => {
-    fetchTasks();
-    fetchClients();
-    fetchUsers();
+    const loadAll = async () => {
+      try {
+        await Promise.all([fetchTasks(), fetchClients(), fetchUsers()]);
+        setLoadingError(null);
+      } catch (err) {
+        console.error('Error cargando datos iniciales:', err);
+        setLoadingError('No se pudieron cargar los datos. Intenta recargar la página.');
+      }
+    };
+
+    loadAll();
 
     socket.on('task:created', (task: Task) => {
-      setTasks(prev => prev.some(t => t.id === task.id) ? prev : [task, ...prev]);
+      setTasks(prev => (prev.some(t => t.id === task.id) ? prev : [task, ...prev]));
     });
 
-    socket.on('task:updated', ({ id, status }: { id: string, status: string }) => {
-      setTasks(prev => prev.map(t => t.id === Number(id) ? { ...t, status: status as any } : t));
+    socket.on('task:updated', (updated: { id: number | string; status: string }) => {
+      setTasks(prev =>
+        prev.map(t =>
+          t.id === updated.id || t.id === Number(updated.id) ? { ...t, status: updated.status } : t
+        )
+      );
     });
 
     return () => {
@@ -47,39 +76,40 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
 
   const fetchTasks = async () => {
     const res = await fetch('/api/tasks');
-    const data = await res.json();
+    if (!res.ok) throw new Error('No se pudieron cargar las tareas');
+    const data: Task[] = await res.json();
     setTasks(data);
   };
 
   const fetchClients = async () => {
     const res = await fetch('/api/clients');
-    const data = await res.json();
+    if (!res.ok) throw new Error('No se pudieron cargar los clientes');
+    const data: Client[] = await res.json();
     setClients(data);
   };
 
   const fetchUsers = async () => {
     const res = await fetch('/api/users');
-    const data = await res.json();
+    if (!res.ok) throw new Error('No se pudieron cargar los usuarios');
+    const data: User[] = await res.json();
     setUsers(data);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setNewTask(prev => ({ ...prev, attachment_url: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setNewTask(prev => ({ ...prev, attachment_url: reader.result as string }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
-    // Si es soporte presencial y hay un acompañante, lo agregamos a los asignados
-    let finalAssignedTo = [...newTask.assigned_to];
+
+    const finalAssignedTo = [...newTask.assigned_to];
     if (newTask.type === 'soporte' && newTask.sub_type === 'soporte_presencial' && newTask.companion) {
       if (!finalAssignedTo.includes(newTask.companion)) {
         finalAssignedTo.push(newTask.companion);
@@ -90,13 +120,31 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
       const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newTask, assigned_to: finalAssignedTo }),
+        body: JSON.stringify({ ...newTask, assigned_to: finalAssignedTo })
       });
-      if (res.ok) {
-        setIsModalOpen(false);
-        setNewTask({ client_id: '', problem: '', type: 'tecnico', sub_type: 'soporte_remoto', assigned_to: [], scheduled_time: '', contact_phone: '', attachment_url: '', location: '', companion: '' });
-        await fetchTasks();
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => null);
+        throw new Error(error?.error || 'Error al crear tarea');
       }
+
+      setIsModalOpen(false);
+      setNewTask({
+        client_id: '',
+        problem: '',
+        type: 'tecnico',
+        sub_type: 'soporte_remoto',
+        assigned_to: [],
+        scheduled_time: '',
+        contact_phone: '',
+        attachment_url: '',
+        location: '',
+        companion: ''
+      });
+      await fetchTasks();
+    } catch (err) {
+      console.error(err);
+      alert((err as Error).message || 'Error al crear tarea');
     } finally {
       setIsSubmitting(false);
     }
@@ -110,32 +158,36 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
         const contacts = await (navigator as any).contacts.select(props, opts);
         if (contacts.length > 0) {
           const contact = contacts[0];
-          const phone = contact.tel && contact.tel.length > 0 ? contact.tel[0] : '';
-          const name = contact.name && contact.name.length > 0 ? contact.name[0].trim() : '';
-          
-          let formattedPhoneString = phone;
-          if (name && phone) {
-            formattedPhoneString = `${name} (${phone})`;
-          } else if (name) {
-            formattedPhoneString = name;
-          }
-          
-          setNewTask(prev => ({ ...prev, contact_phone: formattedPhoneString }));
+          const phone = contact.tel?.[0] || '';
+          const name = contact.name?.[0]?.trim() || '';
+
+          let formattedPhone = phone;
+          if (name && phone) formattedPhone = `${name} (${phone})`;
+          else if (name) formattedPhone = name;
+
+          setNewTask(prev => ({ ...prev, contact_phone: formattedPhone }));
         }
       } else {
-        alert("La aplicación de contactos no es compatible con este navegador o dispositivo. Por favor ingresa el número manualmente.");
+        alert('La aplicación de contactos no es compatible con este navegador o dispositivo. Por favor ingresa el número manualmente.');
       }
     } catch (err) {
-      console.error("Error seleccionando contacto:", err);
+      console.error('Error seleccionando contacto:', err);
     }
   };
 
+  const availableUsers = users.filter(u => u.role === newTask.type);
+
   return (
     <div className="space-y-8">
+      {loadingError && (
+        <div className="rounded-2xl bg-red-50 border border-red-200 p-4 text-sm text-red-700">
+          {loadingError}
+        </div>
+      )}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h3 className="text-xl md:text-2xl font-bold text-gray-900 tracking-tight">Resumen de Actividad</h3>
         <div className="flex flex-col sm:flex-row gap-3">
-          <button 
+          <button
             onClick={() => setIsModalOpen(true)}
             className="bg-gradient-to-r from-orange-500 to-yellow-500 text-white px-4 md:px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all text-sm md:text-base shadow-md shadow-orange-500/20"
           >
@@ -145,26 +197,12 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard 
-          icon={<Clock className="text-orange-500" />} 
-          label="Pendientes" 
-          value={tasks.filter(t => t.status === 'pending').length.toString()} 
-        />
-        <StatCard 
-          icon={<AlertCircle className="text-blue-500" />} 
-          label="En Proceso" 
-          value={tasks.filter(t => t.status === 'in_progress').length.toString()} 
-        />
-        <StatCard 
-          icon={<CheckCircle2 className="text-green-500" />} 
-          label="Completadas" 
-          value={tasks.filter(t => t.status === 'completed').length.toString()} 
-        />
+        <StatCard icon={<Clock className="text-orange-500" />} label="Pendientes" value={tasks.filter(t => t.status === 'pending').length.toString()} />
+        <StatCard icon={<AlertCircle className="text-blue-500" />} label="En Proceso" value={tasks.filter(t => t.status === 'in_progress').length.toString()} />
+        <StatCard icon={<CheckCircle2 className="text-green-500" />} label="Completadas" value={tasks.filter(t => t.status === 'completed').length.toString()} />
       </div>
 
-      {/* Workload Chart */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm p-6">
         <div className="flex items-center gap-2 mb-6">
           <BarChart2 className="text-orange-500" size={24} />
@@ -202,52 +240,53 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
         </div>
       </div>
 
-      {/* Task List */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
         <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gray-50">
           <h4 className="font-bold text-gray-900">Tareas Recientes</h4>
           <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Actualizado en tiempo real</span>
         </div>
         <div className="divide-y divide-gray-200">
-          {tasks.map(task => (
-            <div key={task.id} className="p-6 hover:bg-gray-50/50 transition-colors flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-gray-900">{task.client_name}</span>
-                  {task.client_unique_id && (
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orange-500 bg-orange-50 px-2 py-0.5 rounded-full">ID: {task.client_unique_id}</span>
-                  )}
-                  <span className="text-xs text-gray-400">• {task.client_branch}</span>
+          {tasks.map(task => {
+            const assignedList = safeJsonParse<string[]>(task.assigned_to ?? [], []);
+            return (
+              <div key={task.id} className="p-6 hover:bg-gray-50/50 transition-colors flex items-center justify-between">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-gray-900">{task.client_name}</span>
+                    {task.client_unique_id && (
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-orange-500 bg-orange-50 px-2 py-0.5 rounded-full">
+                        ID: {task.client_unique_id}
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-400">• {task.client_branch}</span>
+                  </div>
+                  <p className="text-sm text-gray-500">{task.problem}</p>
+                  <div className="flex items-center gap-4 mt-2">
+                    <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                      <Users size={12} />
+                      {assignedList.join(', ')}
+                    </div>
+                    <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                      <Clock size={12} />
+                      {formatScheduledTime(task.scheduled_time)}
+                    </div>
+                  </div>
                 </div>
-                <p className="text-sm text-gray-500">{task.problem}</p>
-                <div className="flex items-center gap-4 mt-2">
-                  <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                    <Users size={12} />
-                    {JSON.parse(task.assigned_to).join(', ')}
-                  </div>
-                  <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                    <Clock size={12} />
-                    {new Date(task.scheduled_time).toLocaleString()}
-                  </div>
+                <div className="flex items-center gap-4">
+                  <StatusBadge status={task.status ?? 'pending'} />
+                  <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                    <MessageSquare size={18} className="text-gray-400" />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
-                <StatusBadge status={task.status} />
-                <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                  <MessageSquare size={18} className="text-gray-400" />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {tasks.length === 0 && (
-            <div className="p-12 text-center text-gray-400">
-              No hay tareas asignadas actualmente.
-            </div>
+            <div className="p-12 text-center text-gray-400">No hay tareas asignadas actualmente.</div>
           )}
         </div>
       </div>
 
-      {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-200">
@@ -255,7 +294,7 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
             <form onSubmit={handleCreateTask} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Cliente</label>
-                <select 
+                <select
                   className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-orange-500"
                   value={newTask.client_id}
                   onChange={e => setNewTask({ ...newTask, client_id: e.target.value })}
@@ -263,13 +302,17 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
                 >
                   <option value="">Seleccionar Cliente</option>
                   {clients.map(c => (
-                    <option key={c.id} value={c.id}>{c.unique_id ? `[${c.unique_id}] ` : ''}{c.name} - {c.branch}</option>
+                    <option key={c.id} value={c.id}>
+                      {c.unique_id ? `[${c.unique_id}] ` : ''}
+                      {c.name} - {c.branch}
+                    </option>
                   ))}
                 </select>
               </div>
+
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Problemática</label>
-                <textarea 
+                <textarea
                   className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-orange-500 min-h-[100px]"
                   value={newTask.problem}
                   onChange={e => setNewTask({ ...newTask, problem: e.target.value })}
@@ -277,12 +320,13 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
                   required
                 />
               </div>
+
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Tipo de Tarea</label>
-                <select 
+                <select
                   className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-orange-500"
                   value={newTask.type}
-                  onChange={e => setNewTask({ ...newTask, type: e.target.value as Role })}
+                  onChange={e => setNewTask({ ...newTask, type: e.target.value as Role, assigned_to: [], companion: '' })}
                   required
                 >
                   <option value="tecnico">Técnico</option>
@@ -290,15 +334,21 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
                   <option value="gestion">Gestión</option>
                 </select>
               </div>
+
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Asignar Personal (Seleccione uno o varios)</label>
                 <div className="grid grid-cols-1 gap-2 p-4 bg-gray-50 rounded-xl max-h-60 overflow-y-auto border border-gray-200">
                   <div className="space-y-2">
-                    <h5 className="text-[9px] font-bold uppercase tracking-widest text-gray-400 border-b border-gray-200 pb-1 mt-2">{newTask.type}</h5>
+                    <h5 className="text-[9px] font-bold uppercase tracking-widest text-gray-400 border-b border-gray-200 pb-1 mt-2">
+                      {newTask.type}
+                    </h5>
                     <div className="grid grid-cols-2 gap-2">
-                      {users.filter(u => u.role === newTask.type || (newTask.type === 'soporte' && u.role === 'soporte')).map(u => (
-                        <label key={u.id} className={`flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer ${newTask.assigned_to.includes(u.name) ? 'bg-gradient-to-r from-orange-500 to-yellow-500 text-white border-transparent' : 'bg-white border-gray-200 hover:border-orange-200'}`}>
-                          <input 
+                      {availableUsers.map(u => (
+                        <label
+                          key={u.id}
+                          className={`flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer ${newTask.assigned_to.includes(u.name) ? 'bg-gradient-to-r from-orange-500 to-yellow-500 text-white border-transparent' : 'bg-white border-gray-200 hover:border-orange-200'}`}
+                        >
+                          <input
                             type="checkbox"
                             checked={newTask.assigned_to.includes(u.name)}
                             onChange={e => {
@@ -317,10 +367,11 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
                   </div>
                 </div>
               </div>
+
               {newTask.type === 'soporte' && (
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Modo de Operación</label>
-                  <select 
+                  <select
                     className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-orange-500"
                     value={newTask.sub_type}
                     onChange={e => setNewTask({ ...newTask, sub_type: e.target.value })}
@@ -335,8 +386,8 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
               {(newTask.type !== 'soporte' || newTask.sub_type === 'soporte_presencial') && (
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Fecha y Hora de Cita</label>
-                  <input 
-                    type="datetime-local" 
+                  <input
+                    type="datetime-local"
                     className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-orange-500"
                     value={newTask.scheduled_time}
                     onChange={e => setNewTask({ ...newTask, scheduled_time: e.target.value })}
@@ -349,8 +400,8 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Contacto Telefónico</label>
                   <div className="flex gap-2">
-                    <input 
-                      type="tel" 
+                    <input
+                      type="tel"
                       className="flex-1 px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-orange-500"
                       value={newTask.contact_phone}
                       onChange={e => setNewTask({ ...newTask, contact_phone: e.target.value })}
@@ -375,8 +426,8 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
                 <>
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Ubicación de la Instalación</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-orange-500"
                       value={newTask.location}
                       onChange={e => setNewTask({ ...newTask, location: e.target.value })}
@@ -387,16 +438,14 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Archivos Adjuntos (Planos, Fotos, PDF)</label>
                     <div className="flex items-center gap-2">
-                      <input 
-                        type="file" 
+                      <input
+                        type="file"
                         onChange={handleFileChange}
                         accept="image/*,application/pdf"
                         className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-orange-500 text-sm"
                       />
                     </div>
-                    {newTask.attachment_url && (
-                      <p className="text-xs text-green-600 mt-2">Archivo listo para subir</p>
-                    )}
+                    {newTask.attachment_url && <p className="text-xs text-green-600 mt-2">Archivo listo para subir</p>}
                   </div>
                 </>
               )}
@@ -404,20 +453,23 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
               {newTask.type === 'soporte' && newTask.sub_type === 'soporte_presencial' && (
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Técnico Acompañante</label>
-                  <select 
+                  <select
                     className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-orange-500"
                     value={newTask.companion}
                     onChange={e => setNewTask({ ...newTask, companion: e.target.value })}
                   >
                     <option value="">Ir Solo</option>
                     {users.filter(u => u.role === 'tecnico' || u.role === 'soporte').map(u => (
-                      <option key={u.id} value={u.name}>{u.name} - {u.role}</option>
+                      <option key={u.id} value={u.name}>
+                        {u.name} - {u.role}
+                      </option>
                     ))}
                   </select>
                 </div>
               )}
+
               <div className="flex gap-3 mt-8">
-                <button 
+                <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
                   className="flex-1 px-6 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-50 transition-all"
@@ -425,7 +477,7 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
                 >
                   Cancelar
                 </button>
-                <button 
+                <button
                   type="submit"
                   disabled={isSubmitting}
                   className="flex-1 bg-gradient-to-r from-orange-500 to-yellow-500 text-white px-6 py-3 rounded-xl font-bold hover:opacity-90 transition-all shadow-md shadow-orange-500/20 disabled:opacity-50"
@@ -441,7 +493,7 @@ export default function AdminDashboard({ user, socket }: { user: User, socket: S
   );
 }
 
-function StatCard({ icon, label, value }: { icon: React.ReactNode, label: string, value: string }) {
+function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex items-center gap-4">
       <div className="w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center">
