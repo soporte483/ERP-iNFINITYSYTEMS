@@ -4,7 +4,8 @@
 import { pool, testConnection } from "./database";
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import Database from "better-sqlite3";
+import pg from "pg";
+const { Pool } = pg;
 import { Server } from "socket.io";
 import http from "http";
 import path from "path";
