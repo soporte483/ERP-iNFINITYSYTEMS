@@ -151,6 +151,16 @@ export default function UsuariosView() {
         <p className="text-sm text-gray-500">Administración por rol.</p>
       </div>
 
+      {loading && (
+        <div className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500">Cargando usuarios...</div>
+      )}
+
+      {error && (
+        <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
       {roleOrder.map((role) => (
         <section key={role} className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
@@ -182,13 +192,23 @@ export default function UsuariosView() {
                       <td className="px-4 py-4">{user.username}</td>
                       <td className="px-4 py-4">{user.name}</td>
                       <td className="px-4 py-4">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(user)}
-                          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                        >
-                          Ajustes
-                        </button>
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(user)}
+                            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                          >
+                            Ajustes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(user)}
+                            disabled={deletingId === user.id}
+                            className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -198,6 +218,70 @@ export default function UsuariosView() {
           )}
         </section>
       ))}
+
+      {isModalOpen && selectedUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4">
+          <div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold">Editar usuario</h2>
+                <p className="text-sm text-gray-500">Actualiza el nombre y la contraseña del usuario.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeModal}
+                className="text-gray-400 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSave} className="mt-6 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700">Nombre</label>
+                <input
+                  type="text"
+                  value={editData.name}
+                  onChange={(e) => setEditData((prev) => ({ ...prev, name: e.target.value }))}
+                  className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700">Contraseña</label>
+                <input
+                  type="password"
+                  value={editData.password}
+                  onChange={(e) => setEditData((prev) => ({ ...prev, password: e.target.value }))}
+                  className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
+                  placeholder="Dejar vacío para mantener la contraseña actual"
+                />
+                <p className="mt-2 text-xs text-gray-500">
+                  Si no deseas cambiar la contraseña, deja el campo vacío.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="rounded-2xl border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-2xl bg-gradient-to-r from-orange-500 to-yellow-500 px-5 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                >
+                  {saving ? "Guardando..." : "Guardar cambios"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
