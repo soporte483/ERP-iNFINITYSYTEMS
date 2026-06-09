@@ -1,6 +1,7 @@
 /**
  * CHECKPOINT: Infinity Systems ERP - Version 1.5 (Responsive & Task Optimization)
  */
+import { pool, testConnection } from "./database";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
@@ -189,6 +190,7 @@ for (const user of usersToSeed) {
 }
 
 async function startServer() {
+  await testConnection();
   const app = express();
   const httpServer = http.createServer(app);
   const io = new Server(httpServer);
